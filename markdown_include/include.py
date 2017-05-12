@@ -5,6 +5,8 @@
 #
 #  Copyright 2015 Christopher MacMackin <cmacmackin@gmail.com>
 #
+#  Updated 2017 Eric Lotze <elotze@teradici.com>
+#
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software Foundation; either version 2 of the License, or
@@ -63,42 +65,35 @@ class IncludePreprocessor(Preprocessor):
         self.base_path = config['base_path']
         self.encoding = config['encoding']
 
+    def inject(self, m):
+        filename = m.group(1)
+        filename = os.path.expanduser(filename)
+        if not os.path.isabs(filename):
+            filename = os.path.normpath(
+                os.path.join(self.base_path,filename)
+            )
+        try:
+            with open(filename, 'r', encoding=self.encoding) as r:
+                newresult = []
+                results = r.readlines()
+                for result in results:
+                    newresult.append(re.sub(r'\{!\s*(.+?)\s*!\}', self.inject, result)) 
+                text = ''.join(newresult)
+                
+        except Exception as e:
+            print('Warning: could not find file {}. Ignoring '
+                'include statement. Error: {}'.format(filename, e))
+            text = m.group(0)
+
+        return text
+
     def run(self, lines):
-        done = False
-        while not done:
-            for line in lines:
-                loc = lines.index(line)
-                m = INC_SYNTAX.search(line)
+        newlines = []
 
-                if m:
-                    filename = m.group(1)
-                    filename = os.path.expanduser(filename)
-                    if not os.path.isabs(filename):
-                        filename = os.path.normpath(
-                            os.path.join(self.base_path,filename)
-                        )
-                    try:
-                        with open(filename, 'r', encoding=self.encoding) as r:
-                            text = r.readlines()
-                    except Exception as e:
-                        print('Warning: could not find file {}. Ignoring '
-                            'include statement. Error: {}'.format(filename, e))
-                        lines[loc] = INC_SYNTAX.sub('',line)
-                        break
-
-                    line_split = INC_SYNTAX.split(line)
-                    if len(text) == 0:
-                        text.append('')
-                    for i in range(len(text)):
-                        text[i] = text[i].rstrip('\r\n')
-                    text[0] = line_split[0] + text[0]
-                    text[-1] = text[-1] + line_split[2]
-                    lines = lines[:loc] + text + lines[loc+1:]
-                    break
-            else:
-                done = True
-        return lines
-
+        for line in lines:
+            newlines.append(re.sub(r'\{!\s*(.+?)\s*!\}', self.inject, line))    
+        
+        return newlines
 
 def makeExtension(*args,**kwargs):
     return MarkdownInclude(kwargs)
